@@ -17,7 +17,7 @@ const storage = multer.diskStorage({
     },
     filename: async (req, file, cb) =>{
         const ext = path.extname(file.originalname)
-        cb(null, req.userId+file.fieldname+ext);
+        cb(null, req.sesssionId+'_'+file.fieldname+ext);
     }
 })
 const upload = multer({

@@ -5,7 +5,8 @@ const path = require('path');
 const  upload  = require ('../middlewares/multer.middleware');
 
 const CHUNK_TIMEOUT = 30 * 60 * 1000;
-
+const TEMP_DIR = path.join(__dirname, '../chunks');
+const UPLOAD_DIR = path.join(__dirname, '../uploads');
 
 const Router = express.Router();
 
@@ -43,7 +44,7 @@ Router.post('/upload/init', async (req, res) => {
   }
 });
  
-Router.post('/upload/chunk', upload.single('chunk'), async (req, res) => {
+Router.post('/upload/chunk', upload.single(req.body.chunkIndex), async (req, res) => {
     try{
         const { sessionId, chunkIndex, hash } = req.body;
         if(!sessionId || !chunkIndex || !hash) {
@@ -118,9 +119,43 @@ Router.post('/upload/complete', async (req, res) => {
         if(!session || Date.now() - session.lastActivity > CHUNK_TIMEOUT) {
             return res.status(404).json({ error: 'Session not found' });
         }
-        
+        if(session.uploadedChunks.size !== session.totalChunks) {
+            return res.status(400).json({ error: 'Not all chunks uploaded, Check status for more info' });
+        }
+        const uploadPath = UPLOAD_DIR + path.sep + sessionId;
+        const writeStream = await fs.createWriteStream(uploadPath, 'w');
+        try {
+        for (let i = 0; i < session.totalChunks; i++) {
+            const chunkPath = path.join(TEMP_DIR, `${sessionId}_${i}`);
+            const chunkData = await fs.readFile(chunkPath);
+            await writeStream.write(chunkData);
+            
+            await fs.unlink(chunkPath);
+        }
+        } finally {
+            cleanSession(sessionId);
+            await writeStream.close();
+        }
+        const file = await fs.stat(uploadPath);
+        if(file.size!= session.fileSize) {
+            await fs.unlink(uploadPath);
+            return res.status(400).json({ error: 'File size mismatch after upload' });
+        }
+        if(session.fileHash){
+            const calculatedHash = crypto.createHash('md5').update(await fs.readFile(uploadPath)).digest('hex');
+            if(calculatedHash !== session.fileHash) {
+                await fs.unlink(uploadPath);
+                cleanSession(sessionId);
+                return res.status(400).json({ error: 'File hash mismatch after upload' });
+            }
+        }
+        cleanSession(sessionId);
+        res.json({ message: 'File uploaded successfully' });
 
-    }
+    }catch (error) {
+        console.error('Error completing upload:', error);
+        cleanSession(sessionId);
+        res.status(500).json({ error: 'Failed to complete upload' });
 });
 function cleanSession(sessionId) {
     uploadSessions.delete(sessionId);
