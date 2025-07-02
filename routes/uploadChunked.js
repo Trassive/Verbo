@@ -15,6 +15,7 @@ const uploadSessions = new Map();
 
 Router.post('/upload/init', async (req, res) => {
   try {
+
     const { fileName, fileSize, totalChunks, fileHash } = req.body;
     
     if (!fileName || !fileSize || !totalChunks) {
@@ -26,7 +27,7 @@ Router.post('/upload/init', async (req, res) => {
     const sessionId = crypto.randomUUID();
     
     uploadSessions.set(sessionId, {
-      fileName,
+      fileName: fileName,
       fileSize: parseInt(fileSize),
       totalChunks: parseInt(totalChunks),
       fileHash,
@@ -40,6 +41,8 @@ Router.post('/upload/init', async (req, res) => {
       message: 'Upload session initialized'
     });
   } catch (error) {
+    saveStateToDisk();
+    
     console.error('Error initializing upload:', error);
     res.status(500).json({ error: 'Failed to initialize upload' });
   }
@@ -49,7 +52,7 @@ Router.post('/upload/chunk', upload.single('chunk'), async (req, res) => {
     try{
         const { sessionId, idx, hash } = req.body;
         if(!sessionId || !idx || !hash) {
-            return res.status(400).json({ error: 'Missing required fields: sessionId, idx, hash' });
+            return res.status(400).json({ error: 'Missing required fields: sessionId, idx, hash',  });
         }
         const session = uploadSessions.get(sessionId);
         if(!session || Date.now() - session.lastActivity > CHUNK_TIMEOUT) {
@@ -81,6 +84,7 @@ Router.post('/upload/chunk', upload.single('chunk'), async (req, res) => {
             isCompleted: session.uploadedChunks.size === session.totalChunks
         });
     } catch (error) {
+        saveStateToDisk();
         console.error('Error uploading chunk:', error);
         res.status(500).json({ error: 'Failed to upload chunk' });
     }
@@ -106,6 +110,7 @@ Router.get('/upload/status/:sessionId', async (req, res) => {
             isCompleted: session.uploadedChunks.size === session.totalChunks
         });
     } catch (error) {
+        saveStateToDisk();
         console.error('Error fetching upload status:', error);
         res.status(500).json({ error: 'Failed to fetch upload status' });
     }
@@ -124,12 +129,12 @@ Router.post('/upload/complete', async (req, res) => {
         if(session.uploadedChunks.size !== session.totalChunks) {
             return res.status(400).json({ error: 'Not all chunks uploaded, Check status for more info' });
         }
-        const uploadPath = path.join(UPLOAD_DIR, sessionId);
+        const uploadPath = path.join(UPLOAD_DIR, sessionId+path.extname(session.fileName));
 
         const writeStream =  fssync.createWriteStream(uploadPath);
         try {
             for (let i = 0; i < session.totalChunks; i++) {
-                const chunkPath = path.join(TEMP_DIR, `${sessionId}_${i}`);
+                const chunkPath = path.join(TEMP_DIR, `${sessionId}_${i}.bin`);
                 const chunkData = await fs.readFile(chunkPath);
                 if (!writeStream.write(chunkData)) {
                 await new Promise(resolve => writeStream.once('drain', resolve));
@@ -138,6 +143,7 @@ Router.post('/upload/complete', async (req, res) => {
                 await fs.unlink(chunkPath);
             }
         }  finally {
+            saveStateToDisk();
             writeStream.end();
             cleanSession(sessionId);
         }
@@ -159,8 +165,8 @@ Router.post('/upload/complete', async (req, res) => {
         res.json({ message: 'File uploaded successfully' });
 
     }catch (error) {
+        saveStateToDisk();
         console.error('Error completing upload:', error);
-        cleanSession(sessionId);
         res.status(500).json({ error: 'Failed to complete upload' });
     }
 });
@@ -168,4 +174,35 @@ function cleanSession(sessionId) {
     uploadSessions.delete(sessionId);
 }
 
-module.exports = Router;
+// Save to file
+function saveStateToDisk() {
+  fssync.writeFileSync('uploadSessions.json', JSON.stringify(Object.fromEntries(uploadSessions)));
+}
+
+// Restore from file
+function loadStateFromDisk() {
+  const filePath = './routes/uploadSessions.json';
+  
+  if (fssync.existsSync(filePath)) {
+    try {
+      const obj = JSON.parse(fssync.readFileSync(filePath, 'utf-8'));
+
+      Object.entries(obj).forEach(([key, value]) => {
+        // Convert uploadedChunks array back to Set
+        value.uploadedChunks = new Set(value.uploadedChunks);
+
+        uploadSessions.set(key, value);
+      });
+
+      console.log(`✅ Loaded ${uploadSessions.size} sessions from disk.`);
+    } catch (err) {
+      console.error('❌ Error loading session file:', err.message);
+    }
+  } else {
+    console.log('⚠️ No uploadSessions.json file found. Starting fresh.');
+  }
+}
+
+
+
+module.exports = {Router, loadStateFromDisk};

@@ -1,12 +1,13 @@
 require('dotenv').config()
 const express = require('express');
-const single = require('./routes/uploadSingle');
 const app = express();
+const {Router, loadStateFromDisk} = require('./routes/uploadChunked');
 
 app.use(express.json());
 
+loadStateFromDisk();
 
-app.use('/', single);
+app.use('/',Router);
 
 app.get('/',(req,res)=>{
     res.send("hellow");

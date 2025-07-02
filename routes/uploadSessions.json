@@ -1,0 +1,11 @@
+{
+  "51a1aea7-c55b-4260-987d-d1cf5d0d1572": {
+    "fileName": "video.mp4",
+    "fileSize": 105207195,
+    "totalChunks": 11,
+    "fileHash": "5685052b5526a88e677b35c8461e0daf",
+    "uploadedChunks": [0,1,2,3,4,5,6,7,8,9,10],
+    "lastActivity": 1751482281207,
+    "createdAt": 1720185600000
+  }
+}

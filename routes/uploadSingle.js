@@ -4,7 +4,7 @@ const  upload  = require ('../middlewares/multer.middleware');
 const Router = express.Router();
 
 
-Router.use((req, res, next) =>{
+Router.get('/upload/single',(req, res, next) =>{
 
  try {
     if (!req.file) {

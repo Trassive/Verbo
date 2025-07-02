@@ -16,21 +16,13 @@ const storage = multer.diskStorage({
     },
     filename: async (req, file, cb) =>{
         const ext = path.extname(file.originalname)
-        cb(null, req.body.sessionId+'_'+req.body.chunkIndex+ext);
+        cb(null, req.body.sessionId+'_'+req.body.idx+ext);
     }
 })
 const upload = multer({
     storage: storage, 
     limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB per chunk
+    fileSize: 15 * 1024 * 1024, // 15MB per chunk
    },
-    fileFilter: (req, file, cb) =>{
-        if(allowedTypes.includes(file.mimetype)){
-            cb(null, true)
-        } else{
-            cb(new Error('File type is either invalid or not supported'), false);
-        }
-    }
-
 });
 module.exports = upload
