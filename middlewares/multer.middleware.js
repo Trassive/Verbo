@@ -1,4 +1,3 @@
-const fs = require('fs');
 const multer = require('multer');
 const path = require('path');
 
@@ -17,7 +16,7 @@ const storage = multer.diskStorage({
     },
     filename: async (req, file, cb) =>{
         const ext = path.extname(file.originalname)
-        cb(null, req.sesssionId+'_'+file.fieldname+ext);
+        cb(null, req.body.sessionId+'_'+req.body.chunkIndex+ext);
     }
 })
 const upload = multer({

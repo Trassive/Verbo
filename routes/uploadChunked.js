@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs').promises;
+const fssync = require('fs');
 const crypto = require('crypto');
 const path = require('path');
 const  upload  = require ('../middlewares/multer.middleware');
@@ -44,11 +45,11 @@ Router.post('/upload/init', async (req, res) => {
   }
 });
  
-Router.post('/upload/chunk', upload.single(req.body.chunkIndex), async (req, res) => {
+Router.post('/upload/chunk', upload.single('chunk'), async (req, res) => {
     try{
-        const { sessionId, chunkIndex, hash } = req.body;
-        if(!sessionId || !chunkIndex || !hash) {
-            return res.status(400).json({ error: 'Missing required fields: sessionId, chunkIndex, hash' });
+        const { sessionId, idx, hash } = req.body;
+        if(!sessionId || !idx || !hash) {
+            return res.status(400).json({ error: 'Missing required fields: sessionId, idx, hash' });
         }
         const session = uploadSessions.get(sessionId);
         if(!session || Date.now() - session.lastActivity > CHUNK_TIMEOUT) {
@@ -56,6 +57,7 @@ Router.post('/upload/chunk', upload.single(req.body.chunkIndex), async (req, res
             cleanSession(sessionId); // yet to write this function
             return;
         }
+        const chunkIndex = parseInt(idx,10);
         if(chunkIndex < 0 || chunkIndex >= session.totalChunks ||session.uploadedChunks.has(chunkIndex)) {
             res.status(400).json({ error: 'Invalid chunk index' });
             return;
@@ -122,22 +124,26 @@ Router.post('/upload/complete', async (req, res) => {
         if(session.uploadedChunks.size !== session.totalChunks) {
             return res.status(400).json({ error: 'Not all chunks uploaded, Check status for more info' });
         }
-        const uploadPath = UPLOAD_DIR + path.sep + sessionId;
-        const writeStream = await fs.createWriteStream(uploadPath, 'w');
+        const uploadPath = path.join(UPLOAD_DIR, sessionId);
+
+        const writeStream =  fssync.createWriteStream(uploadPath);
         try {
-        for (let i = 0; i < session.totalChunks; i++) {
-            const chunkPath = path.join(TEMP_DIR, `${sessionId}_${i}`);
-            const chunkData = await fs.readFile(chunkPath);
-            await writeStream.write(chunkData);
-            
-            await fs.unlink(chunkPath);
-        }
-        } finally {
+            for (let i = 0; i < session.totalChunks; i++) {
+                const chunkPath = path.join(TEMP_DIR, `${sessionId}_${i}`);
+                const chunkData = await fs.readFile(chunkPath);
+                if (!writeStream.write(chunkData)) {
+                await new Promise(resolve => writeStream.once('drain', resolve));
+            }
+                
+                await fs.unlink(chunkPath);
+            }
+        }  finally {
+            writeStream.end();
             cleanSession(sessionId);
-            await writeStream.close();
         }
+    
         const file = await fs.stat(uploadPath);
-        if(file.size!= session.fileSize) {
+        if(file.size !== session.fileSize) {
             await fs.unlink(uploadPath);
             return res.status(400).json({ error: 'File size mismatch after upload' });
         }
@@ -156,6 +162,7 @@ Router.post('/upload/complete', async (req, res) => {
         console.error('Error completing upload:', error);
         cleanSession(sessionId);
         res.status(500).json({ error: 'Failed to complete upload' });
+    }
 });
 function cleanSession(sessionId) {
     uploadSessions.delete(sessionId);
