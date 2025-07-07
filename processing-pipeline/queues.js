@@ -1,5 +1,5 @@
 const { Queue } = require("bullmq");
-const { splitterQueueName } = require("./queue_types/queue_types");
+const { splitterQueueName ,transcoderQueueName} = require("./queue_types/queue_types");
 const path = require("path");
 
 const connection = {
@@ -8,5 +8,6 @@ const connection = {
 };
 
 const splitterQueue = new Queue(splitterQueueName, { connection });
+const transcoderQueue = new Queue(transcoderQueueName, { connection });
 
-module.exports = {splitterQueue}
+module.exports = {splitterQueue ,transcoderQueue }

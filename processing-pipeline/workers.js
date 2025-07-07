@@ -15,7 +15,6 @@ const { worker: splitterWorker } = createWorker(
 );
 
 
-
 process.on("SIGTERM", async () => {
   console.info("SIGTERM signal received: closing queues");
   await splitterWorker.close();
