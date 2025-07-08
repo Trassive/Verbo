@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const {_, Job} = require('bullmq');
+const {worker, Job} = require('bullmq');
 const { processChunksForSession , getDuration} = require("../utils/helper");
 const {exec} = require("child_process")
 
