@@ -1,7 +1,7 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const {worker, Job} = require('bullmq');
+const {_, Job} = require('bullmq');
 
 async function splitterProcessor(Job){
     const outputFolder = path.join(process.cwd(), './media/splitter_videos', Job.data.sessionId);
