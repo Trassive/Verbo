@@ -23,4 +23,6 @@ function promisifySpawn(command, args) {
             }
         });
     });
+
 }
+module.exports = { promisifySpawn };

@@ -1,14 +1,15 @@
 const fs = require('fs');
 const path = require('path');
 const {_, Job} = require('bullmq');
-const { processChunksForSession , getDuration} = require("../utils/helper");
-const {exec} = require("child_process")
+const { processChunksForSession} = require("../utils/helper");
+const {getDuration} = require("../utils/getDuration");
+const {execSync} = require("child_process")
 
 async function splitterProcessor(Job){
-    const outputFolder = path.join(process.cwd(), './media/splitter_videos', Job.data.sessionId);
-    await splitter(Job.data.videoFile, outputFolder);
+    const outputFolder = path.join("C:\\Users\\Tushar\\Desktop\\js_projects\\HLSSample", './media/splitter_videos', Job.data.sessionId);
+    const output = await splitter(Job.data.videoFile, outputFolder);
 
-    await processChunksForSession(Job.data.sessionId , outputFolder);
+    await processChunksForSession(Job.data.sessionId , outputFolder, output.chunkCount);
 }
 
 async function splitter(inputVideo, outputFolder, chunkDuration = 20, maxGap = 5) {
@@ -27,10 +28,10 @@ async function splitter(inputVideo, outputFolder, chunkDuration = 20, maxGap = 5
         console.log(`Processing Video: ${inputVideo}`);
         console.log(`Output will be in MKV format inside '${outputFolder}'`);
 
-        getDuration(inputVideo);
+        const videoDuration = getDuration(inputVideo);
 
         const keyframeCommand = `ffprobe -v error -skip_frame nokey -select_streams v:0 -show_entries frame=best_effort_timestamp_time -of csv=p=0 "${inputVideo}"`;
-        const keyframeOutput = exec(keyframeCommand, { encoding: 'utf8' });
+        const keyframeOutput = execSync(keyframeCommand, { encoding: 'utf8' });
         
         const keyframes = keyframeOutput
             .split('\n')
@@ -78,7 +79,7 @@ async function splitter(inputVideo, outputFolder, chunkDuration = 20, maxGap = 5
             console.log(`  Creating chunk ${chunkNumber.toString().padStart(2, '0')}: ${outputFilename} (${duration.toFixed(2)} seconds)`);
             
             const ffmpegCommand = `ffmpeg -ss ${startTime} -i "${inputVideo}" -to ${duration} -c copy -y "${outputFilename}"`;
-            exec(ffmpegCommand, { stdio: 'pipe' });
+            execSync(ffmpegCommand, { stdio: 'pipe' });
 
             if (endTime >= videoDuration) {
                 break;

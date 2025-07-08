@@ -5,7 +5,7 @@ const { transcoderQueue } = require('../queues');
 const { getDuration } = require('./getDuration');
 
 
-async function processChunksForSession(sessionId, chunkDir) {
+async function processChunksForSession(sessionId, chunkDir, totalChunks) {
   const files = fs.readdirSync(chunkDir)
   .sort((a, b) => {
     const getNum = (f) => parseInt(f.match(/\d+/)?.[0] || '0', 10);
@@ -14,7 +14,7 @@ async function processChunksForSession(sessionId, chunkDir) {
 
   let globalDuration = new Decimal(0);
   let playlistContent = '';
-
+  let index = 1;
   for (const file of files) {
     const chunkPath = path.join(chunkDir, file);
 
@@ -26,14 +26,15 @@ async function processChunksForSession(sessionId, chunkDir) {
       continue; 
     }
     const data = {
-      path: chunkPath,
-      globalDuration,
-      chunkDuration,
-      sessionId
+      inputPath: chunkPath,
+      globalDuration: globalDuration,
+      sessionId: sessionId,
+      index: index
     };
+    index++;
 
     if (chunkDuration) {
-      const segmentLine = `#EXTINF:${duration.toFixed(3)},\n${file}\n`;
+      const segmentLine = `#EXTINF:${chunkDuration.toFixed(3)},\n${file}\n`;
       playlistContent += segmentLine;
     }
 
@@ -42,12 +43,11 @@ async function processChunksForSession(sessionId, chunkDir) {
     await transcoderQueue.add('transcode-chunk', data);
   }
 
-  const parentDir = path.dirname("./media/playlist/mediaPlaylist/dummy");
+  const parentDir = path.join("C:\\Users\\Tushar\\Desktop\\js_projects\\HLSSample", '/media/playlist/mediaPlaylist/dummy', sessionId);
   fs.mkdirSync(parentDir, { recursive: true });
 
-  fs.writeFileSync("./media/playlist/mediaPlaylist/dummy", playlistContent);
-  console.log(`Playlist written to ${"./media/playlist/mediaPlaylist/dummy"}`);
-
+  fs.writeFileSync(path.join(parentDir, 'playlist.m3u8'), playlistContent);
+  console.log(`Playlist written to ${path.join(parentDir, 'playlist.m3u8')}`);
 
   console.log(`[Helper] Processed all chunks for session ${sessionId}`);
 }

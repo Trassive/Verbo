@@ -1,9 +1,12 @@
 const { Worker } = require("bullmq");
-
+// limit set
 function createWorker(name, processor, connection, concurrency = 1) {
   const worker = new Worker(name, processor, {
     connection,
     concurrency,
+  });
+  worker.on("ready", () => {
+    console.log(`Worker for queue ${name} is ready`);
   });
 
   worker.on("completed", (job) => {
