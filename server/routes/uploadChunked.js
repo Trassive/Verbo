@@ -4,19 +4,18 @@ const fssync = require('fs');
 const crypto = require('crypto');
 const path = require('path');
 const  upload  = require ('../middlewares/multer.middleware');
-const {addJobs} = require('C:\\Video streaming platform\\Hls\\processing-pipeline\\producer.js')
+const checkFile = require('./utils/mime-type_helper');
+const cleanSession = require('./utils/sessionCleaner');
 
 const CHUNK_TIMEOUT = 30 * 60 * 1000;
-const TEMP_DIR = path.join(__dirname, '../chunks');
-const UPLOAD_DIR = path.join(__dirname, '../uploads');
+const TEMP_DIR = path.join(process.cwd(), './media/temp');
+const UPLOAD_DIR = path.join(process.cwd(), './media/completed_uploads');
 
 const Router = express.Router();
-
 const uploadSessions = new Map();
 
 Router.post('/upload/init', async (req, res) => {
   try {
-
     const { fileName, fileSize, totalChunks, fileHash } = req.body;
     
     if (!fileName || !fileSize || !totalChunks) {
@@ -24,11 +23,16 @@ Router.post('/upload/init', async (req, res) => {
         error: 'Missing required fields: fileName, fileSize, totalChunks' 
       });
     }
+    if(!checkFile(fileName)){
+        return res.status(400).json({ 
+            error: 'Invalid file type.'
+        });
+    }
 
     const sessionId = crypto.randomUUID();
     
     uploadSessions.set(sessionId, {
-      fileName: fileName,
+      fileName,
       fileSize: parseInt(fileSize),
       totalChunks: parseInt(totalChunks),
       fileHash,
@@ -42,8 +46,6 @@ Router.post('/upload/init', async (req, res) => {
       message: 'Upload session initialized'
     });
   } catch (error) {
-    saveStateToDisk();
-    
     console.error('Error initializing upload:', error);
     res.status(500).json({ error: 'Failed to initialize upload' });
   }
@@ -53,12 +55,12 @@ Router.post('/upload/chunk', upload.single('chunk'), async (req, res) => {
     try{
         const { sessionId, idx, hash } = req.body;
         if(!sessionId || !idx || !hash) {
-            return res.status(400).json({ error: 'Missing required fields: sessionId, idx, hash',  });
+            return res.status(400).json({ error: 'Missing required fields: sessionId, idx, hash' });
         }
         const session = uploadSessions.get(sessionId);
         if(!session || Date.now() - session.lastActivity > CHUNK_TIMEOUT) {
             res.status(400).json({ error: 'Invalid or expired session' });
-            cleanSession(sessionId); // yet to write this function
+            cleanSession(sessionId, uploadSessions);
             return;
         }
         const chunkIndex = parseInt(idx,10);
@@ -85,7 +87,6 @@ Router.post('/upload/chunk', upload.single('chunk'), async (req, res) => {
             isCompleted: session.uploadedChunks.size === session.totalChunks
         });
     } catch (error) {
-        saveStateToDisk();
         console.error('Error uploading chunk:', error);
         res.status(500).json({ error: 'Failed to upload chunk' });
     }
@@ -111,7 +112,6 @@ Router.get('/upload/status/:sessionId', async (req, res) => {
             isCompleted: session.uploadedChunks.size === session.totalChunks
         });
     } catch (error) {
-        saveStateToDisk();
         console.error('Error fetching upload status:', error);
         res.status(500).json({ error: 'Failed to fetch upload status' });
     }
@@ -125,17 +125,19 @@ Router.post('/upload/complete', async (req, res) => {
         }
         const session = uploadSessions.get(sessionId);
         if(!session || Date.now() - session.lastActivity > CHUNK_TIMEOUT) {
+            cleanSession(sessionId, uploadSessions);
             return res.status(404).json({ error: 'Session not found' });
         }
         if(session.uploadedChunks.size !== session.totalChunks) {
+            cleanSession(sessionId, uploadSessions);
             return res.status(400).json({ error: 'Not all chunks uploaded, Check status for more info' });
         }
-        const uploadPath = path.join(UPLOAD_DIR, sessionId+path.extname(session.fileName));
+        const uploadPath = path.join(UPLOAD_DIR, sessionId);
 
         const writeStream =  fssync.createWriteStream(uploadPath);
         try {
             for (let i = 0; i < session.totalChunks; i++) {
-                const chunkPath = path.join(TEMP_DIR, `${sessionId}_${i}.bin`);
+                const chunkPath = path.join(TEMP_DIR, `${sessionId}_${i}.tmp`);
                 const chunkData = await fs.readFile(chunkPath);
                 if (!writeStream.write(chunkData)) {
                 await new Promise(resolve => writeStream.once('drain', resolve));
@@ -144,66 +146,30 @@ Router.post('/upload/complete', async (req, res) => {
                 await fs.unlink(chunkPath);
             }
         }  finally {
-            saveStateToDisk();
             writeStream.end();
-            cleanSession(sessionId);
         }
     
         const file = await fs.stat(uploadPath);
         if(file.size !== session.fileSize) {
             await fs.unlink(uploadPath);
+            cleanSession(sessionId, uploadSessions);
             return res.status(400).json({ error: 'File size mismatch after upload' });
         }
         if(session.fileHash){
             const calculatedHash = crypto.createHash('md5').update(await fs.readFile(uploadPath)).digest('hex');
             if(calculatedHash !== session.fileHash) {
                 await fs.unlink(uploadPath);
-                cleanSession(sessionId);
+                cleanSession(sessionId, uploadSessions);
                 return res.status(400).json({ error: 'File hash mismatch after upload' });
             }
         }
-        cleanSession(sessionId);
         res.json({ message: 'File uploaded successfully' });
 
     }catch (error) {
-        saveStateToDisk();
         console.error('Error completing upload:', error);
         res.status(500).json({ error: 'Failed to complete upload' });
     }
 });
-function cleanSession(sessionId) {
-    uploadSessions.delete(sessionId);
-}
-
-// Save to file
-function saveStateToDisk() {
-  fssync.writeFileSync('uploadSessions.json', JSON.stringify(Object.fromEntries(uploadSessions)));
-}
-
-// Restore from file
-function loadStateFromDisk() {
-  const filePath = './routes/uploadSessions.json';
-  
-  if (fssync.existsSync(filePath)) {
-    try {
-      const obj = JSON.parse(fssync.readFileSync(filePath, 'utf-8'));
-
-      Object.entries(obj).forEach(([key, value]) => {
-        // Convert uploadedChunks array back to Set
-        value.uploadedChunks = new Set(value.uploadedChunks);
-
-        uploadSessions.set(key, value);
-      });
-
-      console.log(`✅ Loaded ${uploadSessions.size} sessions from disk.`);
-    } catch (err) {
-      console.error('❌ Error loading session file:', err.message);
-    }
-  } else {
-    console.log('⚠️ No uploadSessions.json file found. Starting fresh.');
-  }
-}
 
 
-
-module.exports = {Router, loadStateFromDisk};
+module.exports = {Router};

@@ -1,11 +1,10 @@
 require('dotenv').config()
 const express = require('express');
 const app = express();
-const {Router, loadStateFromDisk} = require('./routes/uploadChunked');
+const {Router} = require('./routes/uploadChunked');
 
 app.use(express.json());
 
-loadStateFromDisk();
 
 app.use('/',Router);
 

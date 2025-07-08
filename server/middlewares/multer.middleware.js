@@ -1,22 +1,25 @@
 const multer = require('multer');
 const path = require('path');
 
-const allowedTypes =[
-  'video/mp4',
-  'video/quicktime',
-  'video/x-msvideo',
-  'video/x-matroska',
-  'video/webm',
-  'video/mpeg'
-]
 
 const storage = multer.diskStorage({
     destination: async (req,file,cb) =>{
-        cb(null, './uploads');
+        const tempDir = path.join(process.cwd(), './media/temp');
+        if(!req.body.sessionId) {
+            return cb(new Error('Missing sessionId or idx in request body'));
+        }
+        const sessionDir = path.join(tempDir, req.body.sessionId);
+        if (!fs.existsSync(sessionDir)) {
+            fs.mkdirSync(sessionDir, { recursive: true });
+        }
+        cb(null, sessionDir);
     },
+    
     filename: async (req, file, cb) =>{
-        const ext = path.extname(file.originalname)
-        cb(null, req.body.sessionId+'_'+req.body.idx+ext);
+        if(!req.body.sessionId || !req.body.idx) {
+            return cb(new Error('Missing sessionId or idx in request body'));
+        }
+        cb(null, req.body.sessionId+'_'+req.body.idx+'.tmp');
     }
 })
 const upload = multer({
