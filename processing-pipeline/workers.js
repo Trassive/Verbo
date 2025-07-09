@@ -3,7 +3,7 @@ const {splitterQueueName, transcoderQueueName} = require("./queue_types/queue_ty
 const {splitterProcessor} = require("./processors/splitter");
 const {transcoderProcessor} = require("./processors/transcoderProcessor");
 const { createWorker } = require("./utils/worker.factory");
-const { addJobs } = require("./queues");
+const { addJobs, removeJobs } = require("./queues");
 
 const connection = {
   host: "localhost",

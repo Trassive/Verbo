@@ -36,4 +36,4 @@ await transcoderQueue.clean(0, 100, 'wait');
 }
 
 
-module.exports = {splitterQueue ,transcoderQueue,addJobs};
+module.exports = {splitterQueue ,transcoderQueue,addJobs, removeJobs};

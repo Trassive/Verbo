@@ -10,7 +10,8 @@ async function transcoderProcessor(Job) {
         initialOffset: Job.data.globalDuration,
         hardwareAcceleration: true,
         index: Job.data.index,
-        segmentDuration: 2
+        segmentDuration: 2,
+        shouldCreateInit: Job.data.index === 1,
     };
     console.log(Job.data);
     const result = await transcode(options);
@@ -29,6 +30,7 @@ async function transcode(options) {
         hardwareAcceleration = false,
         index ,
         segmentDuration = 4,
+        shouldCreateInit = false,
     } = options;
 
     if (!fs.existsSync(outputDir)) {
@@ -64,6 +66,7 @@ async function transcode(options) {
             '-hls_playlist_type', 'event',
             '-hls_segment_type', 'fmp4',
             '-hls_flags', 'independent_segments',
+            ...(shouldCreateInit ? ['-hls_fmp4_init_filename', path.join(outputPrefix, 'init.mp4')] : []),
             '-hls_segment_filename', fileName + '%03d.m4s',
             playlistName
         ];
